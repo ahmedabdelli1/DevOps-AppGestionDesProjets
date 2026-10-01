@@ -4,10 +4,12 @@ pipeline {
         stage('Checkout') {
             steps { checkout scm }
         }
-        stage('Build Backend') {
+
+        // ---------- BACKEND ----------
+        stage('Compile Backend') {
             steps {
                 dir('backend') {
-                    sh 'mvn clean package -DskipTests'
+                    sh 'mvn clean compile'
                 }
             }
         }
@@ -18,14 +20,31 @@ pipeline {
                 }
             }
         }
-        stage('Build Frontend') {
+        stage('Package Backend') {
+            steps {
+                dir('backend') {
+                    sh 'mvn package -DskipTests'
+                }
+            }
+        }
+
+        // ---------- FRONTEND ----------
+        stage('Install Frontend') {
             steps {
                 dir('frontend') {
                     sh 'npm install'
+                }
+            }
+        }
+        stage('Build Frontend') {
+            steps {
+                dir('frontend') {
                     sh 'npm run build'
                 }
             }
         }
+
+        // ---------- ARCHIVE ----------
         stage('Archive') {
             steps {
                 archiveArtifacts artifacts: 'backend/target/*.jar', fingerprint: true
