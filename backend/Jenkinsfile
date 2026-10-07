@@ -12,13 +12,17 @@ pipeline {
     stages {
         stage('1. Build & Test Maven') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                dir('backend') {
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
 
         stage('2. Docker Build') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                dir('backend') {
+                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                }
             }
         }
 
