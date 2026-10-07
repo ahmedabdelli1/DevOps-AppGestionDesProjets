@@ -1,0 +1,82 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_USER     = 'ahmedabdelli123'
+        IMAGE_NAME      = 'backend-app'
+        IMAGE_TAG       = 'latest'
+        NETWORK_NAME    = 'devops-net'
+        CREDENTIALS_ID  = 'dockerhub-credentials'
+    }
+
+    stages {
+        stage('1. Build & Test Maven') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('2. Docker Build') {
+            steps {
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+            }
+        }
+
+        stage('3. Docker Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${CREDENTIALS_ID}", usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "echo \$PASS | docker login -u \$USER --password-stdin"
+                    sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('4. Déploiement MySQL') {
+            steps {
+                sh '''
+                    docker network create devops-net || true
+                    if [ $(docker ps -aq -f name=^/mysql$) ]; then
+                        if [ ! $(docker ps -q -f name=^/mysql$) ]; then
+                            docker start mysql
+                        fi
+                    else
+                        docker run -d \
+                          --name mysql \
+                          --network devops-net \
+                          -e MYSQL_ROOT_PASSWORD=root \
+                          -e MYSQL_DATABASE=test_db \
+                          -p 3306:3306 \
+                          mysql:8.0
+                    fi
+                '''
+            }
+        }
+
+        stage('5. Déploiement backend-app') {
+            steps {
+                sh '''
+                    docker stop backend-app || true
+                    docker rm backend-app || true
+
+                    docker run -d \
+                      --name backend-app \
+                      --network devops-net \
+                      -p 8080:8080 \
+                      -e SPRING_DATASOURCE_URL="jdbc:mysql://mysql:3306/test_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true" \
+                      -e SPRING_DATASOURCE_USERNAME="root" \
+                      -e SPRING_DATASOURCE_PASSWORD="root" \
+                      ''' + DOCKER_USER + '''/''' + IMAGE_NAME + ''':''' + IMAGE_TAG + '''
+                '''
+            }
+        }
+
+        stage('6. Vérification avec logs') {
+            steps {
+                sleep time: 10, unit: 'SECONDS'
+                sh 'docker ps'
+                sh 'docker logs backend-app'
+            }
+        }
+    }
+}
